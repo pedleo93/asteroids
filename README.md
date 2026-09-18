@@ -32,14 +32,17 @@ Luego visita `http://localhost:3000`.
 
 ## Puntuación
 
-| Asteroide | Puntos |
-| --------- | ------ |
-| Grande    | 20     |
-| Mediano   | 50     |
-| Pequeño   | 100    |
+| Asteroide       | Puntos |
+| --------------- | ------ |
+| Grande          | 20     |
+| Mediano         | 50     |
+| Pequeño         | 100    |
+| Estrella fugaz  | 500    |
 
 ## Características
 
 - 3 vidas con invencibilidad temporal al reaparecer (parpadeo)
 - Asteroides se parten en fragmentos más pequeños al ser destruidos
 - Partículas de explosión al destruir asteroides
+- Power-up "Velocidad" (drop aleatorio de asteroides): duplica empuje y velocidad máxima por 5 s
+- Estrella fugaz: asteroide dorado, rápido y de puntos bonus que aparece periódicamente y desaparece con el tiempo

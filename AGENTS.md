@@ -24,4 +24,4 @@ Vanilla JavaScript Asteroids clone. No dependencies, no build step, no tests, no
 
 ## Known doc drift
 
-- `README.md` claims power-ups and an "estrella fugaz" (shooting star) asteroid type — neither exists in the code. Trust `game.js` over the README.
+- `README.md` uses the plural "power-ups especiales" in the description, but currently only the "Velocidad" power-up exists in the code. The "estrella fugaz" (shooting star) now exists. Trust `game.js` over the README for anything else.
