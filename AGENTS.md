@@ -14,7 +14,8 @@ Vanilla JavaScript Asteroids clone. No dependencies, no build step, no tests, no
 - Entities (`Ship`, `Asteroid`, `Bullet`, `Particle`) share an `update(dt)` / `draw()` pattern driven by a `requestAnimationFrame` loop; `dt` is clamped to 0.05 s.
 - The world is toroidal: positions go through `wrap(v, max)` — use it for anything that moves.
 - Held keys read `keys[code]`; one-shot input uses `pressed(code)` (edge detection via `justPressed`).
-- Game state machine: module-level `state` var with `'playing' | 'dead' | 'gameover'`.
+- Game state machine: module-level `state` var with `'menu' | 'playing' | 'dead' | 'gameover'`. The game boots into `'menu'` (skin selection); `initGame()` is only called when the player presses Space there.
+- Ship skins live in the `// ── Skins ──` section: each is `{ id, name, color, flame, tail, paths }`, where `paths` are closed polygons around the origin (first one is the hull; also drawn scaled down for the HUD life icons). All skins must fit the ship's collision radius (12) and nose (~20 px, where bullets spawn). The chosen skin persists via `localStorage`.
 - Code is organized with `// ── Section ──` banner comments; follow that layout when adding sections.
 
 ## Conventions

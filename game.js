@@ -29,6 +29,82 @@ const dist  = (a, b)   => Math.hypot(a.x - b.x, a.y - b.y);
 const rand  = (min, max) => min + Math.random() * (max - min);
 const randInt = (min, max) => Math.floor(rand(min, max + 1));
 
+// Traza sobre ctx un polígono cerrado a partir de una lista de [x, y]
+function tracePoly(pts) {
+  ctx.beginPath();
+  ctx.moveTo(pts[0][0], pts[0][1]);
+  for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i][0], pts[i][1]);
+  ctx.closePath();
+}
+
+// ── Skins ─────────────────────────────────────────────────────────────────────
+// Apariencias de la nave. Cada skin define el color de trazo, el color y el
+// ancla de la llama (tail, x trasera) y una lista de trazados cerrados
+// (arrays de [x, y]; el primero es el casco, el resto son detalles).
+// Todos encajan en el radio de colisión (12) y apuntan la nariz a ~20 px.
+const SKINS = [
+  {
+    id: 'clasica', name: 'CLÁSICA', color: '#fff',
+    flame: 'rgba(255, 130, 0, 0.85)', tail: -8,
+    paths: [
+      [[20, 0], [-12, -9], [-7, 0], [-12, 9]],  // triángulo con muesca trasera
+    ],
+  },
+  {
+    id: 'dardo', name: 'DARDO', color: '#ff5c5c',
+    flame: 'rgba(255, 200, 0, 0.85)', tail: -13,
+    paths: [
+      [[22, 0], [-8, -5], [-15, 0], [-8, 5]],   // flecha fina
+    ],
+  },
+  {
+    id: 'halcon', name: 'HALCÓN', color: '#ffd54a',
+    flame: 'rgba(255, 120, 0, 0.85)', tail: -14,
+    paths: [
+      [[14, 0], [6, -8], [-10, -11], [-14, -5], [-14, 5], [-10, 11], [6, 8]],  // cuerpo ancho
+      [[8, 0], [2, -3], [-4, -3], [-4, 3], [2, 3]],                            // cabina
+    ],
+  },
+  {
+    id: 'neon', name: 'NEÓN', color: '#0ff',
+    flame: 'rgba(0, 255, 255, 0.7)', tail: -8,
+    paths: [
+      [[18, 0], [-13, -10], [-8, 0], [-13, 10]],  // contorno exterior
+      [[12, 0], [-8, -6], [-5, 0], [-8, 6]],      // doble trazo interior
+    ],
+  },
+  {
+    id: 'colmena', name: 'COLMENA', color: '#9dff57',
+    flame: 'rgba(120, 255, 80, 0.85)', tail: -16,
+    paths: [
+      [[20, -5], [6, -13], [-11, -8], [-16, 0], [-11, 8], [6, 13], [20, 5]],  // casco hexagonal
+      [[0, -11], [0, 11]],                                                    // línea dorsal
+    ],
+  },
+];
+
+// Skin elegida, recordada entre sesiones (localStorage puede fallar en
+// navegadores privados: por eso los try/catch)
+const SKIN_KEY = 'asteroids.skin';
+
+function loadSkinIndex() {
+  try {
+    const i = SKINS.findIndex(s => s.id === localStorage.getItem(SKIN_KEY));
+    return i >= 0 ? i : 0;
+  } catch { return 0; }
+}
+
+function saveSkinIndex(i) {
+  try { localStorage.setItem(SKIN_KEY, SKINS[i].id); } catch {}
+}
+
+let skinIndex = loadSkinIndex();
+
+function cycleSkin(dir) {
+  skinIndex = (skinIndex + dir + SKINS.length) % SKINS.length;
+  saveSkinIndex(skinIndex);
+}
+
 // ── Bullet ────────────────────────────────────────────────────────────────────
 class Bullet {
   constructor(x, y, angle) {
@@ -182,6 +258,8 @@ class Ship {
     this.invincible    = 3;
     this.shootCooldown = 0;
     this.speedBoost    = 0;
+    this.tripleShot    = 0;
+    this.shield        = 0;
     this.dead          = false;
   }
 
@@ -190,6 +268,8 @@ class Ship {
     if (this.invincible    > 0) this.invincible    -= dt;
     if (this.shootCooldown > 0) this.shootCooldown -= dt;
     if (this.speedBoost    > 0) this.speedBoost    -= dt;
+    if (this.tripleShot    > 0) this.tripleShot    -= dt;
+    if (this.shield        > 0) this.shield        -= dt;
 
     const ROT   = 3.5;   // rad/s
     const THRUST = 260 * (this.speedBoost > 0 ? 2 : 1);  // px/s²
@@ -216,6 +296,16 @@ class Ship {
     const NOSE = 21;
     const ox = this.x + Math.cos(this.angle) * NOSE;
     const oy = this.y + Math.sin(this.angle) * NOSE;
+    // Triple disparo: 3 balas paralelas en línea recta (offset perpendicular)
+    if (this.tripleShot > 0) {
+      const px = -Math.sin(this.angle) * 8;
+      const py =  Math.cos(this.angle) * 8;
+      return [
+        new Bullet(ox - px, oy - py, this.angle),
+        new Bullet(ox,      oy,      this.angle),
+        new Bullet(ox + px, oy + py, this.angle),
+      ];
+    }
     return [new Bullet(ox, oy, this.angle)];
   }
 
@@ -227,27 +317,37 @@ class Ship {
     ctx.save();
     ctx.translate(this.x, this.y);
     ctx.rotate(this.angle);
-    ctx.strokeStyle = '#fff';
+    ctx.strokeStyle = SKINS[skinIndex].color;
     ctx.lineWidth   = 1.5;
     ctx.lineJoin    = 'round';
 
-    // Silueta clásica: triángulo con muesca trasera
-    ctx.beginPath();
-    ctx.moveTo( 20,  0);   // nariz
-    ctx.lineTo(-12, -9);   // ala izquierda
-    ctx.lineTo( -7,  0);   // muesca trasera
-    ctx.lineTo(-12,  9);   // ala derecha
-    ctx.closePath();
-    ctx.stroke();
+    // Casco y detalles del skin activo
+    for (const pts of SKINS[skinIndex].paths) {
+      tracePoly(pts);
+      ctx.stroke();
+    }
 
     // Llama del propulsor
     if (this.thrusting && Math.random() > 0.35) {
+      const tail = SKINS[skinIndex].tail;
       ctx.beginPath();
-      ctx.moveTo(-8, -4);
-      ctx.lineTo(-8 - rand(6, 14), 0);
-      ctx.lineTo(-8,  4);
-      ctx.strokeStyle = 'rgba(255, 130, 0, 0.85)';
+      ctx.moveTo(tail, -4);
+      ctx.lineTo(tail - rand(6, 14), 0);
+      ctx.lineTo(tail,  4);
+      ctx.strokeStyle = SKINS[skinIndex].flame;
       ctx.stroke();
+    }
+
+    // Escudo activo: anillo pulsante (parpadea cuando queda poco tiempo)
+    if (this.shield > 0) {
+      const blink = this.shield < 3 && Math.floor(this.shield * 8) % 2 === 0;
+      ctx.globalAlpha = blink ? 0.15 : 0.45 + 0.4 * (0.5 + 0.5 * Math.sin(this.shield * 6));
+      ctx.beginPath();
+      ctx.arc(0, 0, 18, 0, Math.PI * 2);
+      ctx.strokeStyle = '#0f0';
+      ctx.lineWidth   = 1.5;
+      ctx.stroke();
+      ctx.globalAlpha = 1;
     }
 
     ctx.restore();
@@ -288,9 +388,10 @@ class Particle {
 
 // ── Power-up ──────────────────────────────────────────────────────────────────
 class PowerUp {
-  constructor(x, y) {
+  constructor(x, y, type = 'speed') {
     this.x = x;
     this.y = y;
+    this.type = type;
     const angle = rand(0, Math.PI * 2);
     const speed = 40;
     this.vx = Math.cos(angle) * speed;
@@ -312,19 +413,36 @@ class PowerUp {
     if (this.ttl < 3 && Math.floor(this.ttl * 8) % 2 === 0) return;
     ctx.save();
     ctx.translate(this.x, this.y);
-    ctx.strokeStyle = '#0ff';
-    ctx.fillStyle   = '#0ff';
-    ctx.lineWidth   = 1.8;
-    ctx.lineJoin    = 'round';
-    // Doble chevron » apuntando a la derecha
-    ctx.beginPath();
-    ctx.moveTo(-6, -6);
-    ctx.lineTo(-2,  0);
-    ctx.lineTo(-6,  6);
-    ctx.moveTo( 0, -6);
-    ctx.lineTo( 4,  0);
-    ctx.lineTo( 0,  6);
-    ctx.stroke();
+    ctx.lineWidth = 1.8;
+    ctx.lineJoin  = 'round';
+    if (this.type === 'triple') {
+      // Triple disparo: tres barras paralelas ‖‖‖
+      ctx.strokeStyle = '#f0f';
+      ctx.beginPath();
+      for (const dx of [-5, 0, 5]) {
+        ctx.moveTo(dx, -6);
+        ctx.lineTo(dx,  6);
+      }
+      ctx.stroke();
+    } else if (this.type === 'shield') {
+      // Escudo: anillo protector
+      ctx.strokeStyle = '#0f0';
+      ctx.beginPath();
+      ctx.arc(0, 0, 7, 0, Math.PI * 2);
+      ctx.stroke();
+    } else {
+      // Velocidad: doble chevron » apuntando a la derecha
+      ctx.strokeStyle = '#0ff';
+      ctx.fillStyle   = '#0ff';
+      ctx.beginPath();
+      ctx.moveTo(-6, -6);
+      ctx.lineTo(-2,  0);
+      ctx.lineTo(-6,  6);
+      ctx.moveTo( 0, -6);
+      ctx.lineTo( 4,  0);
+      ctx.lineTo( 0,  6);
+      ctx.stroke();
+    }
     ctx.restore();
   }
 }
@@ -332,9 +450,10 @@ class PowerUp {
 // ── Estado del juego ──────────────────────────────────────────────────────────
 let ship, bullets, asteroids, particles, powerups;
 let score, lives, level;
-let state;      // 'playing' | 'dead' | 'gameover'
+let state;      // 'menu' | 'playing' | 'dead' | 'gameover'
 let deadTimer;
 let starTimer;  // temporizador para la próxima estrella fugaz
+let menuAngle = 0;  // rotación de la nave de muestra en el menú
 
 function spawnAsteroids(count) {
   const SAFE_DIST = 130;
@@ -390,8 +509,18 @@ function killShip() {
 
 // ── Update ────────────────────────────────────────────────────────────────────
 function update(dt) {
+  // Menú de selección de skin
+  if (state === 'menu') {
+    menuAngle += dt * 0.8;
+    if (pressed('ArrowLeft'))  cycleSkin(-1);
+    if (pressed('ArrowRight')) cycleSkin(1);
+    if (pressed('Space')) initGame();
+    return;
+  }
+
   if (state === 'gameover') {
     if (pressed('Space')) initGame();
+    if (pressed('Enter')) state = 'menu';
     particles.forEach(p => p.update(dt));
     particles = particles.filter(p => !p.dead);
     return;
@@ -432,8 +561,9 @@ function update(dt) {
         const burstCount = a instanceof ShootingStar ? 12 : a.size * 5;
         explode(a.x, a.y, burstCount);
         newAsteroids.push(...a.split());
-        // 12% de probabilidad de soltar power-up de velocidad
-        if (Math.random() < 0.12) powerups.push(new PowerUp(a.x, a.y));
+        // 12% de probabilidad de soltar power-up (velocidad, triple o escudo)
+        if (Math.random() < 0.12)
+          powerups.push(new PowerUp(a.x, a.y, ['speed', 'triple', 'shield'][randInt(0, 2)]));
       }
     }
   }
@@ -445,7 +575,9 @@ function update(dt) {
   powerups = powerups.filter(p => !p.dead);
   for (const p of powerups) {
     if (!p.dead && !ship.dead && dist(ship, p) < ship.radius + p.radius) {
-      ship.speedBoost = 5;
+      if (p.type === 'triple')      ship.tripleShot = 5;
+      else if (p.type === 'shield') ship.shield     = 8;
+      else                          ship.speedBoost = 5;
       p.dead = true;
       explode(p.x, p.y, 6);
     }
@@ -455,7 +587,15 @@ function update(dt) {
   if (ship.invincible <= 0) {
     for (const a of asteroids) {
       if (dist(ship, a) < ship.radius + a.radius * 0.82) {
-        killShip();
+        // El escudo absorbe el impacto: destruye el asteroide (sin puntos)
+        if (ship.shield > 0) {
+          ship.shield     = 0;
+          ship.invincible = 1.5;
+          a.dead = true;
+          explode(a.x, a.y, a instanceof ShootingStar ? 12 : a.size * 5);
+        } else {
+          killShip();
+        }
         break;
       }
     }
@@ -478,18 +618,15 @@ function update(dt) {
 
 // ── Draw ──────────────────────────────────────────────────────────────────────
 function drawLifeIcon(x, y) {
+  const skin = SKINS[skinIndex];
   ctx.save();
   ctx.translate(x, y);
   ctx.rotate(-Math.PI / 2);
-  ctx.strokeStyle = '#fff';
-  ctx.lineWidth   = 1.2;
+  ctx.scale(0.45, 0.45);
+  ctx.strokeStyle = skin.color;
+  ctx.lineWidth   = 2.7;   // 2.7 · 0.45 ≈ 1.2 px en pantalla
   ctx.lineJoin    = 'round';
-  ctx.beginPath();
-  ctx.moveTo( 9,  0);
-  ctx.lineTo(-6, -5);
-  ctx.lineTo(-3,  0);
-  ctx.lineTo(-6,  5);
-  ctx.closePath();
+  tracePoly(skin.paths[0]);   // solo el casco: los detalles no se leen a este tamaño
   ctx.stroke();
   ctx.restore();
 }
@@ -507,12 +644,24 @@ function drawHUD() {
   for (let i = 0; i < lives; i++)
     drawLifeIcon(W - 16 - i * 22, 18);
 
-  // Indicador de power-up de velocidad
+  // Indicadores de power-ups activos
   if (ship && ship.speedBoost > 0) {
     ctx.fillStyle = '#0ff';
     ctx.font      = '13px monospace';
     ctx.textAlign = 'center';
     ctx.fillText(`VELOCIDAD ${ship.speedBoost.toFixed(1)}s`, W / 2, 46);
+  }
+  if (ship && ship.tripleShot > 0) {
+    ctx.fillStyle = '#f0f';
+    ctx.font      = '13px monospace';
+    ctx.textAlign = 'center';
+    ctx.fillText(`TRIPLE ${ship.tripleShot.toFixed(1)}s`, W / 2, 64);
+  }
+  if (ship && ship.shield > 0) {
+    ctx.fillStyle = '#0f0';
+    ctx.font      = '13px monospace';
+    ctx.textAlign = 'center';
+    ctx.fillText(`ESCUDO ${ship.shield.toFixed(1)}s`, W / 2, 82);
   }
 }
 
@@ -526,9 +675,51 @@ function drawOverlay(title, sub) {
   ctx.fillText(sub, W / 2, H / 2 + 22);
 }
 
+function drawMenu() {
+  const skin = SKINS[skinIndex];
+
+  // Nave de muestra girando lentamente, con llama pulsante
+  ctx.save();
+  ctx.translate(W / 2, H / 2 - 40);
+  ctx.rotate(menuAngle);
+  ctx.scale(1.6, 1.6);
+  ctx.strokeStyle = skin.color;
+  ctx.lineWidth   = 1.5;
+  ctx.lineJoin    = 'round';
+  for (const pts of skin.paths) {
+    tracePoly(pts);
+    ctx.stroke();
+  }
+  ctx.beginPath();
+  ctx.moveTo(skin.tail, -4);
+  ctx.lineTo(skin.tail - 10 - Math.sin(menuAngle * 5) * 4, 0);
+  ctx.lineTo(skin.tail,  4);
+  ctx.strokeStyle = skin.flame;
+  ctx.stroke();
+  ctx.restore();
+
+  ctx.textAlign = 'center';
+  ctx.fillStyle = '#fff';
+  ctx.font      = 'bold 38px monospace';
+  ctx.fillText('ELIGE TU NAVE', W / 2, 140);
+
+  ctx.fillStyle = skin.color;
+  ctx.font      = 'bold 22px monospace';
+  ctx.fillText(`${skin.name}   ${skinIndex + 1}/${SKINS.length}`, W / 2, H - 140);
+
+  ctx.fillStyle = 'rgba(255,255,255,0.65)';
+  ctx.font      = '17px monospace';
+  ctx.fillText('←/→ CAMBIAR   ·   ESPACIO PARA JUGAR', W / 2, H - 100);
+}
+
 function draw() {
   ctx.fillStyle = '#000';
   ctx.fillRect(0, 0, W, H);
+
+  if (state === 'menu') {
+    drawMenu();
+    return;
+  }
 
   particles.forEach(p => p.draw());
   asteroids.forEach(a => a.draw());
@@ -539,7 +730,7 @@ function draw() {
   drawHUD();
 
   if (state === 'gameover')
-    drawOverlay('GAME OVER', `PUNTAJE: ${score}   —   ESPACIO PARA REINICIAR`);
+    drawOverlay('GAME OVER', `PUNTAJE: ${score}   —   ESPACIO REINICIAR · ENTER MENÚ`);
 }
 
 // ── Loop principal ────────────────────────────────────────────────────────────
@@ -553,5 +744,5 @@ function loop(ts) {
   requestAnimationFrame(loop);
 }
 
-initGame();
+state = 'menu';
 requestAnimationFrame(loop);
