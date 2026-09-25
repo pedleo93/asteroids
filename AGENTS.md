@@ -15,7 +15,7 @@ Vanilla JavaScript Asteroids clone. No dependencies, no build step, no tests, no
 - The world is toroidal: positions go through `wrap(v, max)` — use it for anything that moves.
 - Held keys read `keys[code]`; one-shot input uses `pressed(code)` (edge detection via `justPressed`).
 - Game state machine: module-level `state` var with `'menu' | 'playing' | 'dead' | 'gameover'`. The game boots into `'menu'` (skin selection); `initGame()` is only called when the player presses Space there.
-- Ship skins live in the `// ── Skins ──` section: each is `{ id, name, color, flame, tail, paths }`, where `paths` are closed polygons around the origin (first one is the hull; also drawn scaled down for the HUD life icons). All skins must fit the ship's collision radius (12) and nose (~20 px, where bullets spawn). The chosen skin persists via `localStorage`.
+- Ship skins live in the `// ── Skins ──` section: each is `{ id, name, color, flame, tail, paths }`, plus optional `scale` (multiplies drawn size, collision radius 12·scale and nose 21·scale; e.g. `titan` uses `scale: 2`) and optional `scoreMultiplier` (multiplies all points scored while flying it), where `paths` are closed polygons around the origin (first one is the hull; also drawn scaled down for the HUD life icons). All skins must fit their collision radius (12·scale) and nose (~21·scale px, where bullets spawn). The chosen skin persists via `localStorage`.
 - Code is organized with `// ── Section ──` banner comments; follow that layout when adding sections.
 
 ## Conventions

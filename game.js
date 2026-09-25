@@ -41,7 +41,9 @@ function tracePoly(pts) {
 // Apariencias de la nave. Cada skin define el color de trazo, el color y el
 // ancla de la llama (tail, x trasera) y una lista de trazados cerrados
 // (arrays de [x, y]; el primero es el casco, el resto son detalles).
-// Todos encajan en el radio de colisión (12) y apuntan la nariz a ~20 px.
+// Todos encajan en el radio de colisión (12) y apuntan la nariz a ~20 px,
+// salvo que definan `scale`, que multiplica su tamaño, radio y nariz.
+// `scoreMultiplier` (opcional) multiplica los puntos obtenidos con esa nave.
 const SKINS = [
   {
     id: 'clasica', name: 'CLÁSICA', color: '#fff',
@@ -81,6 +83,15 @@ const SKINS = [
       [[0, -11], [0, 11]],                                                    // línea dorsal
     ],
   },
+  {
+    id: 'titan', name: 'TITÁN', color: '#b26bff',
+    flame: 'rgba(178, 107, 255, 0.85)', tail: -8,
+    scale: 2,            // el doble de grande que la clásica
+    scoreMultiplier: 2,  // puntúa el doble con esta nave
+    paths: [
+      [[20, 0], [-12, -9], [-7, 0], [-12, 9]],  // triángulo clásico, a doble tamaño
+    ],
+  },
 ];
 
 // Skin elegida, recordada entre sesiones (localStorage puede fallar en
@@ -104,6 +115,10 @@ function cycleSkin(dir) {
   skinIndex = (skinIndex + dir + SKINS.length) % SKINS.length;
   saveSkinIndex(skinIndex);
 }
+
+// Escala de tamaño y multiplicador de puntos del skin activo (1 por defecto)
+const skinScale = () => SKINS[skinIndex].scale || 1;
+const skinMult  = () => SKINS[skinIndex].scoreMultiplier || 1;
 
 // ── Bullet ────────────────────────────────────────────────────────────────────
 class Bullet {
@@ -253,7 +268,7 @@ class Ship {
     this.angle  = -Math.PI / 2;
     this.vx     = 0;
     this.vy     = 0;
-    this.radius = 12;
+    this.radius = 12 * skinScale();  // el radio escala con el skin (TITÁN colisiona al doble)
     this.thrusting     = false;
     this.invincible    = 3;
     this.shootCooldown = 0;
@@ -293,7 +308,7 @@ class Ship {
   tryShoot() {
     if (this.shootCooldown > 0 || this.dead) return [];
     this.shootCooldown = 0.2;
-    const NOSE = 21;
+    const NOSE = 21 * skinScale();  // las balas nacen en la nariz del skin activo
     const ox = this.x + Math.cos(this.angle) * NOSE;
     const oy = this.y + Math.sin(this.angle) * NOSE;
     // Triple disparo: 3 balas paralelas en línea recta (offset perpendicular)
@@ -317,6 +332,8 @@ class Ship {
     ctx.save();
     ctx.translate(this.x, this.y);
     ctx.rotate(this.angle);
+    const sc = skinScale();
+    ctx.scale(sc, sc);   // los skins con `scale` se dibujan a su tamaño
     ctx.strokeStyle = SKINS[skinIndex].color;
     ctx.lineWidth   = 1.5;
     ctx.lineJoin    = 'round';
@@ -557,7 +574,7 @@ function update(dt) {
       if (!a.dead && !b.dead && dist(b, a) < a.radius) {
         b.dead = true;
         a.dead = true;
-        score += a.points;
+        score += a.points * skinMult();
         const burstCount = a instanceof ShootingStar ? 12 : a.size * 5;
         explode(a.x, a.y, burstCount);
         newAsteroids.push(...a.split());
@@ -619,12 +636,13 @@ function update(dt) {
 // ── Draw ──────────────────────────────────────────────────────────────────────
 function drawLifeIcon(x, y) {
   const skin = SKINS[skinIndex];
+  const sc   = skinScale();
   ctx.save();
   ctx.translate(x, y);
   ctx.rotate(-Math.PI / 2);
-  ctx.scale(0.45, 0.45);
+  ctx.scale(0.45 * sc, 0.45 * sc);   // el icono escala con la nave
   ctx.strokeStyle = skin.color;
-  ctx.lineWidth   = 2.7;   // 2.7 · 0.45 ≈ 1.2 px en pantalla
+  ctx.lineWidth   = 2.7;   // 2.7 · 0.45 ≈ 1.2 px en pantalla por unidad de escala
   ctx.lineJoin    = 'round';
   tracePoly(skin.paths[0]);   // solo el casco: los detalles no se leen a este tamaño
   ctx.stroke();
@@ -638,11 +656,21 @@ function drawHUD() {
   ctx.textAlign = 'left';
   ctx.fillText(`SCORE  ${score}`, 14, 26);
 
+  // Aviso del multiplicador de puntos del skin activo (p. ej. el TITÁN)
+  if (skinMult() > 1) {
+    ctx.fillStyle = SKINS[skinIndex].color;
+    ctx.font      = '13px monospace';
+    ctx.fillText('PUNTOS x2', 14, 46);
+  }
+
+  ctx.fillStyle = '#fff';
+  ctx.font      = '15px monospace';
   ctx.textAlign = 'center';
   ctx.fillText(`NIVEL ${level}`, W / 2, 26);
 
+  const iconGap = 22 * skinScale();  // los iconos de vida escalan con la nave
   for (let i = 0; i < lives; i++)
-    drawLifeIcon(W - 16 - i * 22, 18);
+    drawLifeIcon(W - 16 - i * iconGap, 18);
 
   // Indicadores de power-ups activos
   if (ship && ship.speedBoost > 0) {
@@ -677,12 +705,13 @@ function drawOverlay(title, sub) {
 
 function drawMenu() {
   const skin = SKINS[skinIndex];
+  const sc   = skinScale();
 
   // Nave de muestra girando lentamente, con llama pulsante
   ctx.save();
   ctx.translate(W / 2, H / 2 - 40);
   ctx.rotate(menuAngle);
-  ctx.scale(1.6, 1.6);
+  ctx.scale(1.6 * sc, 1.6 * sc);
   ctx.strokeStyle = skin.color;
   ctx.lineWidth   = 1.5;
   ctx.lineJoin    = 'round';
@@ -706,6 +735,12 @@ function drawMenu() {
   ctx.fillStyle = skin.color;
   ctx.font      = 'bold 22px monospace';
   ctx.fillText(`${skin.name}   ${skinIndex + 1}/${SKINS.length}`, W / 2, H - 140);
+
+  // Ventaja del skin: el TITÁN puntúa el doble
+  if (skinMult() > 1) {
+    ctx.font = '17px monospace';
+    ctx.fillText('¡PUNTOS x2!', W / 2, H - 168);
+  }
 
   ctx.fillStyle = 'rgba(255,255,255,0.65)';
   ctx.font      = '17px monospace';

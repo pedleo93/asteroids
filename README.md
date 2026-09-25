@@ -41,6 +41,8 @@ En la pantalla de inicio, `←` `→` cambian de nave y `Espacio` comienza la pa
 | Pequeño         | 100    |
 | Estrella fugaz  | 500    |
 
+Con la nave **Titán**, todos los puntos se duplican.
+
 ## Características
 
 - 3 vidas con invencibilidad temporal al reaparecer (parpadeo)
@@ -50,4 +52,5 @@ En la pantalla de inicio, `←` `→` cambian de nave y `Espacio` comienza la pa
 - Power-up "Triple disparo" (drop aleatorio de asteroides): cada disparo emite 3 balas paralelas en línea recta por 5 s
 - Power-up "Escudo" (drop aleatorio de asteroides): anillo protector de 8 s que absorbe un impacto
 - Estrella fugaz: asteroide dorado, rápido y de puntos bonus que aparece periódicamente y desaparece con el tiempo
-- Sistema de skins: elige entre 5 naves (Clásica, Dardo, Halcón, Neón y Colmena) en la pantalla inicial; tu elección se recuerda entre sesiones
+- Sistema de skins: elige entre 6 naves (Clásica, Dardo, Halcón, Neón, Colmena y Titán) en la pantalla inicial; tu elección se recuerda entre sesiones
+- Nave "Titán": morada y el doble de grande que la clásica; con ella todos los puntos puntúan doble
