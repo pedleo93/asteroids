@@ -32,10 +32,14 @@ jobs:
               documentation: ['readme', 'doc', 'documentación', 'documentacion', 'guía', 'guia'],
               question: ['pregunta', 'duda', 'cómo funciona', 'como funciona', 'ayuda']
             };
-            const labels = new Set(
-              Object.keys(claves).filter((name) => claves[name].some((kw) => texto.includes(kw)))
-            );
+            const encontradas = {};
+            for (const [name, kws] of Object.entries(claves)) {
+              const matches = kws.filter((kw) => texto.includes(kw));
+              if (matches.length) encontradas[name] = matches.filter((kw) => !matches.some((o) => o !== kw && o.includes(kw)));
+            }
+            const labels = new Set(Object.keys(encontradas));
             labels.add('needs-triage');
+            const detectadas = Object.keys(encontradas);
 
             // ── Asegurar que las labels existan en el repo ──
             const { owner, repo } = context.repo;
@@ -64,24 +68,51 @@ jobs:
               }
             }
 
-            // ── Cuerpo formateado (texto original intacto) ──
+            // ── Cuerpo formateado: resumen, info por puntos y original al final ──
             const sha = context.sha;
             const arbol = `https://github.com/${owner}/${repo}/tree/${sha}`;
+            const nombres = {
+              bug: 'bug',
+              enhancement: 'mejora',
+              documentation: 'documentación',
+              question: 'consulta'
+            };
+            const frases = {
+              bug: 'reporta que algo no funciona',
+              enhancement: 'propone una nueva funcionalidad o mejora',
+              documentation: 'refiere a la documentación del proyecto',
+              question: 'plantea una duda o consulta'
+            };
+            const resumen = detectadas.length
+              ? `Issue clasificado automáticamente como **${detectadas.map((l) => nombres[l]).join(' + ')}**: ${detectadas.map((l) => frases[l]).join(' y ')}. Pendiente de revisión inicial (\`needs-triage\`).`
+              : 'Sin clasificación automática: no se detectaron palabras clave conocidas, requiere revisión manual. Pendiente de revisión inicial (`needs-triage`).';
+            const clasificacion = detectadas.length
+              ? detectadas.map((l) => `\`${nombres[l]}\` (${encontradas[l].map((kw) => `«${kw}»`).join(', ')})`).join(' · ')
+              : 'sin coincidencias — clasificar manualmente';
+            const autor = context.payload.issue.user.login;
+            const abierto = new Date(context.payload.issue.created_at).toLocaleDateString('es-ES', { day: 'numeric', month: 'long', year: 'numeric', timeZone: 'UTC' });
             const cuerpo = [
               MARCADOR,
-              '### 📝 Descripción original',
+              '## 📋 Resumen',
               '',
-              original.trim() ? original : '_(sin descripción)_',
+              resumen,
+              '',
+              '## ℹ️ Información relevante',
+              '',
+              `- **Clasificación:** ${clasificacion}`,
+              `- **Labels aplicadas:** ${[...labels].map((l) => `\`${l}\``).join(', ')}`,
+              `- **Autor:** [@${autor}](https://github.com/${autor}) · **Abierto:** ${abierto}`,
+              `- **Commit HEAD al abrir:** [\`${sha.slice(0, 7)}\`](${arbol})`,
+              '- **Cómo ejecutar:** abrir `index.html` directamente en el navegador (`file://` funciona; sin build ni `npm`)',
+              '- **Lógica del juego:** `game.js` (archivo único, por diseño)',
+              '- **Convención del repo:** comentarios y UI en español',
+              '- ⚠️ **Doc drift:** el README puede estar desactualizado respecto a `game.js` — fiarse de `game.js`',
               '',
               '---',
               '',
-              '### 🧭 Contexto del repositorio',
+              '## 📝 Descripción original',
               '',
-              `- Commit HEAD al abrir: [\`${sha.slice(0, 7)}\`](${arbol})`,
-              '- Cómo ejecutar: abrir `index.html` directamente en el navegador (`file://` funciona; sin build ni `npm`)',
-              '- Lógica del juego: `game.js` (archivo único, por diseño)',
-              '- Convención del repo: comentarios y UI en español',
-              '- ⚠️ El README puede estar desactualizado respecto a `game.js` — fiarse de `game.js`',
+              original.trim() ? original : '_(sin descripción)_',
               ''
             ].join('\n');
 
