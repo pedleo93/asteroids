@@ -1,0 +1,100 @@
+name: Formatear Issue
+
+on:
+  issues:
+    types: [opened]
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  formatear:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Formatear issue y aplicar labels
+        uses: actions/github-script@v9
+        with:
+          script: |
+            const MARCADOR = '<!-- contexto-bot -->';
+            const original = context.payload.issue.body || '';
+
+            if (original.includes(MARCADOR)) {
+              core.info('El issue ya fue formateado por el bot; no se modifica.');
+              return;
+            }
+
+            // ── Clasificación por palabras clave (título + cuerpo) ──
+            const texto = `${context.payload.issue.title}\n${original}`.toLowerCase();
+            const claves = {
+              bug: ['error', 'fallo', 'falla', 'no funciona', 'se rompe', 'se rompió', 'rompe', 'glitch', 'roto', 'crash', 'broken'],
+              enhancement: ['idea', 'agregar', 'añadir', 'anadir', 'nueva', 'nuevo', 'feature', 'mejora', 'mejorar', 'power-up', 'skin'],
+              documentation: ['readme', 'doc', 'documentación', 'documentacion', 'guía', 'guia'],
+              question: ['pregunta', 'duda', 'cómo funciona', 'como funciona', 'ayuda']
+            };
+            const labels = new Set(
+              Object.keys(claves).filter((name) => claves[name].some((kw) => texto.includes(kw)))
+            );
+            labels.add('needs-triage');
+
+            // ── Asegurar que las labels existan en el repo ──
+            const { owner, repo } = context.repo;
+            const meta = {
+              bug: { color: 'd73a4a', description: 'Algo no funciona' },
+              enhancement: { color: 'a2eeef', description: 'Nueva funcionalidad o mejora' },
+              documentation: { color: '0075ca', description: 'Mejoras o adiciones a la documentación' },
+              question: { color: 'd876e3', description: 'Consulta o duda' },
+              'needs-triage': { color: 'e99695', description: 'Pendiente de revisión inicial' }
+            };
+            for (const name of labels) {
+              try {
+                await github.rest.issues.getLabel({ owner, repo, name });
+              } catch {
+                try {
+                  await github.rest.issues.createLabel({
+                    owner,
+                    repo,
+                    name,
+                    color: meta[name].color,
+                    description: meta[name].description
+                  });
+                } catch (e) {
+                  core.warning(`No se pudo crear la label "${name}": ${e}`);
+                }
+              }
+            }
+
+            // ── Cuerpo formateado (texto original intacto) ──
+            const sha = context.sha;
+            const arbol = `https://github.com/${owner}/${repo}/tree/${sha}`;
+            const cuerpo = [
+              MARCADOR,
+              '### 📝 Descripción original',
+              '',
+              original.trim() ? original : '_(sin descripción)_',
+              '',
+              '---',
+              '',
+              '### 🧭 Contexto del repositorio',
+              '',
+              `- Commit HEAD al abrir: [\`${sha.slice(0, 7)}\`](${arbol})`,
+              '- Cómo ejecutar: abrir `index.html` directamente en el navegador (`file://` funciona; sin build ni `npm`)',
+              '- Lógica del juego: `game.js` (archivo único, por diseño)',
+              '- Convención del repo: comentarios y UI en español',
+              '- ⚠️ El README puede estar desactualizado respecto a `game.js` — fiarse de `game.js`',
+              ''
+            ].join('\n');
+
+            await github.rest.issues.update({
+              owner,
+              repo,
+              issue_number: context.issue.number,
+              body: cuerpo
+            });
+            await github.rest.issues.addLabels({
+              owner,
+              repo,
+              issue_number: context.issue.number,
+              labels: [...labels]
+            });
+            core.info(`Issue #${context.issue.number} formateado con labels: ${[...labels].join(', ')}`);
