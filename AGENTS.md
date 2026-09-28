@@ -1,6 +1,6 @@
 # AGENTS.md
 
-Vanilla JavaScript Asteroids clone. No dependencies, no build step, no tests, no linter, no CI — do not assume `npm`/`npx` scripts exist.
+Vanilla JavaScript Asteroids clone. No dependencies, no build step, no tests, no linter — do not assume `npm`/`npx` scripts exist. CI is a single GitHub Action (`.github/workflows/format-issue.yml`) that formats newly opened issues (labels + repo context); it runs no tests or linters.
 
 ## Running / verifying
 
